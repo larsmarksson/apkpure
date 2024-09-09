@@ -1,11 +1,15 @@
 import json
 import os
+from typing import Union, Dict, List
+
 import requests
 from bs4 import BeautifulSoup
 from tqdm import tqdm
 import re
 import sys
 import cloudscraper
+
+from apkpure.SearchResult import SearchResult
 
 
 class ApkPure:
@@ -47,7 +51,7 @@ class ApkPure:
             title = html_element.find("p", class_="p1")
             developer = html_element.find("p", class_="p2")
             return {
-                "title": title.text.strip() if title else "Unknown",
+                "app_title": title.text.strip() if title else "Unknown",
                 "developer": developer.text.strip() if developer else "Unknown",
             }
 
@@ -131,7 +135,7 @@ class ApkPure:
 
         return json.dumps(result)
 
-    def search_all(self, name: str) -> list[dict]:
+    def search_all(self, name: str) -> list[SearchResult]:
         self.check_name(name)
 
         url = self.query_url + name
@@ -146,14 +150,32 @@ class ApkPure:
 
         for app in apps_in_list_of_apps:
             all_results.append(self.extract_info_from_search(app))
-        return json.dumps(all_results)
 
-    def get_versions(self, name) -> str:
-        s = json.loads(self.search_top(name))
-        url = f"{s["package_url"]}/versions"
+        results = [SearchResult(res) for res in all_results]
+        return results
+
+    def search_exact(self, app_title: str) -> Union[SearchResult, None]:
+        results = self.search_all(app_title)
+        for app in results:
+            if app.app_title == app_title:
+
+                return app
+        print('no app found')
+        return None
+
+    def get_versions(self, app_title: str = None, package_name: str = None) -> list[SearchResult]:
+        results = self.search_all(app_title)
+        target_result = None
+        for result in results:
+            if result.package_name == package_name or result.app_title == app_title:
+                target_result = result
+        if target_result is None:
+            raise Exception("No versions found")
+        print(target_result)
+        url = f"{target_result.package_url}/versions"
         soup = self.__helper(url)
 
-        full = [{"app": s["package_name"]}]
+        available_versions = []
         ul = soup.find("ul", class_="ver-wrap")
         lists = ul.find_all("li")
         lists.pop()
@@ -165,68 +187,68 @@ class ApkPure:
             package_versioncode = dl_btn["data-dt-versioncode"]
 
             new = {
-                "version": package_version,
+                "package_version": package_version,
                 "download_link": download_link,
                 "version_code": package_versioncode,
             }
-            full.append(new)
-        return json.dumps(full)
+            new_version = SearchResult(target_result.__dict__)
+            new_version.update(new)
+            available_versions.append(new_version)
+        return available_versions
 
-    def get_info(self, name: str) -> str:
-        url = json.loads(self.search_top(name))["package_url"]
+    def get_info(self, app_title: str) -> Dict[str, str | str, List[SearchResult]]:
+        result = self.search_exact(app_title)
+        if result is None:
+            raise Exception("No versions found")
+        url = result.package_url
         html_obj = self.__helper(url)
 
         divs = html_obj.find("div", class_="detail_banner")
         title = divs.find("div", class_="title_link").get_text(strip=True)
-        rating = divs.find("span", class_="rating").get_text(strip=True)
+        rating = divs.find("span", class_="rating")
+        if rating is not None:
+            rating = rating.get_text(strip=True)
         date = divs.find("p", class_="date").text.strip()
         sdk_info = divs.find("p", class_="details_sdk")
         latest_version = sdk_info.contents[1].get_text(strip=True)
         developer = sdk_info.contents[3].get_text(strip=True)
         dl_btn = divs.find("a", class_="download_apk_news").attrs
         package_name = dl_btn["data-dt-package_name"]
-        package_versioncode = dl_btn["data-dt-version_code"]
+        package_version_code = dl_btn["data-dt-version_code"]
         download_link = dl_btn["href"]
 
         # Find the Description
         description = html_obj.find("div", class_="translate-content").get_text()
 
         # Older Versions
-        versions = json.loads(self.get_versions(name))
+        versions = self.get_versions(app_title)
         new = {
-            "title": title,
+            "app_title": title,
             "rating": rating,
             "date": date,
             "latest_version": latest_version,
             "description": description,
             "developer": developer,
             "package_name": package_name,
-            "package_versioncode": package_versioncode,
+            "package_version_code": package_version_code,
             "package_url": download_link,
             "older_versions": versions,
         }
-        return json.dumps(new)
+        return new
 
-    def download(self, name: str, version: str = "") -> str | None:
+    def download(self, search_result: SearchResult = None, app_title: str = None,
+                 version: str = None) -> str | None:
+        if not any([search_result, app_title]):
+            raise Exception("No SearchResult or package name given. Unable to perform download.")
+
         base_url = "https://d.apkpure.com/b/APK/"
+        if version is None:
+            version = search_result.package_version
 
-        versions = json.loads(self.get_versions(name))
-        url = ""
-        if not version:
-            url = f"{base_url}{versions[0]["app"]}?versionCode={versions[1]["version_code"]}"
-            print(url)
-            print("Downloading Latest")
-
-        for v in versions[1:]:
-            if version == v["version"]:
-                url = f"https://d.apkpure.com/b/APK/{versions[0]["app"]}?versionCode={v["version_code"]}"
-                break
-
-        # Check url
-        if not url:
-            print(f"Invalid Version: {version}")
-            return None
+        url = f"{base_url}{search_result.package_name}?versionCode={search_result.package_version_code}"
+        print(url)
         print(f"Downloading v{version}")
+
         return self.downloader(url)
 
     # TODO Fix this downloader method
@@ -243,16 +265,16 @@ class ApkPure:
         os.makedirs(os.path.dirname(fname), exist_ok=True)
 
         if os.path.exists(fname) and int(
-            response.headers.get("content-length", 0)
+                response.headers.get("content-length", 0)
         ) == os.path.getsize(fname):
             print("File Exists!")
             return os.path.realpath(fname)
 
         with tqdm.wrapattr(
-            open(fname, "wb"),
-            "write",
-            miniters=1,
-            total=int(response.headers.get("content-length", 0)),
+                open(fname, "wb"),
+                "write",
+                miniters=1,
+                total=int(response.headers.get("content-length", 0)),
         ) as file:
             for chunk in response.iter_content(chunk_size=4 * 1024):
                 if chunk:

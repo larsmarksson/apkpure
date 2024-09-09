@@ -1,201 +1,71 @@
-# Apk Pure Api
 
-An API for interacting with the APK Pure website, allowing you to search for apps, retrieve app information, and download apps programmatically.
+# Apk Pure API
 
-## Features
+This is a fork of [anishomsy's ApkPure API](https://github.com/anishomsy/apkpure). In this version, several changes were made to return instances of the `SearchResult` class rather than JSON objects, allowing for more programmatic operations and better integration into workflows requiring detailed APK data.
 
-- **Search for Apps**: Find apps on APK Pure by querying their name or keywords.
-- **Get App Info**: Retrieve detailed information about a specific app, including version, developer, ratings, and more.
-- **Download App**: Programmatically download the APK files of the apps.
+## Key Changes
 
-## Getting Started
+### Introduction of the `SearchResult` Class
 
-### Prerequisites
+The `SearchResult` class is now used to represent the results of app searches and metadata retrieval. This allows for direct manipulation of the returned data, enabling more complex operations such as version comparison, detailed information extraction, and cleaner, more maintainable code.
 
-- Python 3.7+
-- `requests` library
-- `beautifulsoup4` library
-- `tqdm` library
+The `SearchResult` class has the following attributes:
+- `app_title`: The title of the app.
+- `developer`: The name of the app's developer.
+- `icon`: URL of the app's icon.
+- `package_name`: The app's package name.
+- `package_size`: The size of the app package in bytes.
+- `package_version`: The current version of the app.
+- `package_version_code`: The version code of the app.
+- `download_link`: URL to download the app.
+- `package_url`: URL of the app's page on APK Pure.
 
-### Installation
+The class includes comparison methods (`__lt__`, `__eq__`, `__gt__`) that allow comparing app versions by their `package_version`. Additionally, the `__repr__` and `__str__` methods have been overridden to provide meaningful string representations of the `SearchResult` object.
 
-First Method:
+### Modifications to `apkpure.py`
 
-```sh
-pip install apkpure
-```
+- **Returning `SearchResult` Instances**: 
+  All methods that previously returned JSON data (such as `search_all`, `search_exact`, and `get_versions`) now return instances of the `SearchResult` class. This change improves flexibility when working with APK data in the code, allowing developers to use object-oriented features like attribute access and method overrides.
 
-<details>
-  <summary>Second Method:</summary>
-1. Clone the repository:
+  Example usage:
+  ```python
+  from apkpure import ApkPure
+  
+  api = ApkPure()
+  search_result = api.search_exact("WhatsApp")
+  
+  if search_result:
+      print(search_result.app_title)  # Access app title directly
+  ```
 
-```sh
-git clone https://github.com/anishomsy/apkpure.git
-cd apkpure
-```
+- **Improved Search and Data Retrieval**:
+  The data extraction from APK Pure's HTML has been refactored to build `SearchResult` instances rather than constructing raw dictionaries or JSON strings. This allows developers to work with strongly typed objects in their code.
 
-2. Create a virtual environment:
+- **New Methods for Comparison**:
+  The `SearchResult` class includes comparison methods (`__lt__`, `__eq__`, `__gt__`) that make it easy to compare app versions. This feature can be used to automatically determine whether a newer version of an app is available, simplifying update logic.
 
-   ```sh
-   python -m venv venv
-   ```
+  Version strings like `'3.2.12'` and `'3.11.12'` are now correctly compared using a tuple-based version comparison approach.
 
-3. Activate the virtual environment:
+### Usage Example
 
-   - On Windows:
-
-     ```sh
-     .\venv\Scripts\activate
-     ```
-
-   - On macOS and Linux:
-
-     ```sh
-     source venv/bin/activate
-     ```
-
-4. Install the required libraries:
-
-   ```sh
-   pip install requests beautifulsoup4 tqdm
-   ```
-
-   or
-
-   ```sh
-   pip install -r requirements.txt
-   ```
-
-   </details>
-
-### Usage
-
-Here's a quick example of how to use the `ApkPure` class:
+Here’s how you can now search for an app and retrieve detailed information using the `SearchResult` class:
 
 ```python
-from apkpure.apkpure import ApkPure
+from apkpure import ApkPure
 
-# Initialize the API
+# Initialize ApkPure
 api = ApkPure()
 
-# Search for an app and get top result
-top_result = api.search_top("WhatsApp")
-print(top_result)
+# Search for an app and get the exact result
+search_result = api.search_exact("WhatsApp")
+if search_result:
+    print(f"Found app: {search_result.app_title}")
+    print(f"Current version: {search_result.package_version}")
+    print(f"Download link: {search_result.download_link}")
 
-# Search for all results
-all_results = api.search_all("WhatsApp")
-print(all_results)
-
-# Get app versions
-versions = api.get_versions("WhatsApp")
-print(versions)
-
-# Get app info
-app_info = api.get_info("WhatsApp")
-print(app_info)
-
-# Download the latest version of an app
-download_path = api.download("whatsapp")
-print(download_path)
-
-# Download a specific version of an app
-api.download("WhatsApp", version="2.21.1.15")
+# Compare versions (for example, with a known version)
+if search_result.package_version > "2.21.1.15":
+    print("A newer version is available.")
 ```
 
-#### Class: `ApkPure`
-
-A class to interact with ApkPure for searching apps, retrieving app information, and downloading APK files.
-
-<details>
-  <summary><code>__init__(headers: dict | None = None) -> None</code></summary>
-  
-  Initialize the `ApkPure` instance with optional headers.
-
-- **Parameters**:
-  - `headers` (dict | None): Optional headers for HTTP requests.
-
-</details>
-
-<details>
-  <summary><code>search_top(name: str) -> str</code></summary>
-  
-  Search for the top result of an app on APK Pure.
-
-- **Parameters**:
-  - `name` (str): The name of the app to search for.
-- **Returns**:
-  - `str`: A JSON string containing details of the top search result.
-
-</details>
-
-<details>
-  <summary><code>search_all(name: str) -> str</code></summary>
-  
-  Search for all results of an app on APK Pure.
-
-- **Parameters**:
-  - `name` (str): The name of the app to search for.
-- **Returns**:
-  - `str`: A JSON string containing details of all search results.
-
-</details>
-
-<details>
-  <summary><code>get_versions(name: str) -> str</code></summary>
-  
-  Retrieve all available versions of the specified app.
-
-- **Parameters**:
-  - `name` (str): The name of the app.
-- **Returns**:
-  - `str`: A JSON string containing the details of all available versions.
-
-</details>
-
-<details>
-  <summary><code>get_info(name: str) -> str</code></summary>
-  
-  Retrieve detailed information about the specified app.
-
-- **Parameters**:
-  - `name` (str): The name of the app.
-- **Returns**:
-  - `str`: A JSON string containing detailed information about the app.
-
-</details>
-
-<details>
-  <summary><code>download(name: str, version: str = "") -> str | None</code></summary>
-  
-  Download the specified version of the app. If no version is specified, download the latest version.
-
-- **Parameters**:
-  - `name` (str): The name of the app.
-  - `version` (str, optional): The version of the app to download. Defaults to the latest version.
-- **Returns**:
-  - `str | None`: The real path to the downloaded APK file, or `None` if the version is invalid.
-
-</details>
-
-## Contributing
-
-Contributions are welcome! Here's how you can contribute:
-
-1. Fork the repository.
-2. Create a new branch (`git checkout -b feature-branch`).
-3. Make your changes.
-4. Commit your changes (`git commit -m 'Add some feature'`).
-5. Push to the branch (`git push origin feature-branch`).
-6. Open a pull request.
-
-Please make sure to update tests as appropriate.
-
-## Contact
-
-If you have any questions, suggestions, or feedback, feel free to contact me:
-
-- GitHub: [anishomsy](https://github.com/anishomsy)
-
-## License
-
-This project is licensed under the Apache License 2.0. See the [LICENSE](LICENSE) file for details.
+This allows for cleaner, object-oriented management of APK data and significantly simplifies version management when working with APK Pure's data.
