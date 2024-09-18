@@ -6,16 +6,16 @@ from typing import Union, Dict, List
 import requests
 from bs4 import BeautifulSoup
 from tqdm import tqdm
-import re
+
 import sys
 import cloudscraper
 
-from apkpure.AppInfo import AppInfo
-from apkpure.SearchResult import SearchResult
+from .AppInfo import AppInfo
+from .SearchResult import SearchResult
 
 
 class ApkPure:
-    def __init__(self, headers: dict | None = None) -> None:
+    def __init__(self, headers: Union[Dict, None] = None) -> None:
         if headers is None:
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0"
