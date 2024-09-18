@@ -38,14 +38,20 @@ class SearchResult:
     def __lt__(self, other):
         if isinstance(other, SearchResult):
             return self._version_tuple() < other._version_tuple()
+        if isinstance(other, tuple):
+            return self._version_tuple() < other
         return NotImplemented
 
     def __eq__(self, other):
         if isinstance(other, SearchResult):
             return self._version_tuple() == other._version_tuple()
+        if isinstance(other, tuple):
+            return self._version_tuple() == other
         return NotImplemented
 
     def __gt__(self, other):
         if isinstance(other, SearchResult):
             return self._version_tuple() > other._version_tuple()
+        if isinstance(other, tuple):
+            return self._version_tuple() > other
         return NotImplemented

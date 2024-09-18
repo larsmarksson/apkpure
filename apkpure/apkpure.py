@@ -178,7 +178,6 @@ class ApkPure:
     def search_exact(self, app_title: str) -> SearchResult:
         results = self.search_all(app_title)
         for app in results:
-            print(app.app_title)
             if app.app_title == app_title:
                 return app
         raise Exception(f"No exact match found for app title: {app_title}")
@@ -206,7 +205,6 @@ class ApkPure:
 
             # Construct the URL to fetch versions
             url = f"{target_result.package_url}/versions"
-            print(url)
             soup = self.__helper(url)
 
             # Parse the available versions
@@ -227,13 +225,13 @@ class ApkPure:
                 dl_btn = dl_btn.attrs
                 package_version = dl_btn.get("data-dt-version", "Unknown")
                 download_link = dl_btn.get("href", "Unknown")
-                package_versioncode = dl_btn.get("data-dt-versioncode", "Unknown")
+                package_version_code = dl_btn.get("data-dt-versioncode", "Unknown")
 
                 # Create a new SearchResult object for each version, based on the original app info
                 version_info = {
                     "package_version": package_version,
                     "download_link": download_link,
-                    "version_code": package_versioncode,
+                    "package_version_code": package_version_code,
                 }
                 new_version = SearchResult(target_result.__dict__)  # Use the base app info from target_result
                 new_version.update(version_info)  # Add version-specific data
@@ -305,57 +303,38 @@ class ApkPure:
             # Raise a clear error message if something goes wrong
             raise Exception(f"Failed to retrieve information for '{app_title}': {str(e)}")
 
-
     def download(self, search_result: SearchResult = None, app_title: str = None, version: str = None) -> str:
         # Ensure that either a valid SearchResult or app_title is provided
         if not any([search_result, app_title]):
             raise Exception("Either SearchResult or app_title must be provided to perform download.")
 
         try:
-            # If search_result is provided, use it for download
-            if not search_result:
-                search_result = self.search_exact(app_title)
-            package_name = search_result.package_name
-
-            if version is None:
-                version = self.get_latest_version(search_result.app_title)
-
-            # Set version from either parameter or from search result
-            package_name = search_result.package_name
-
-            version_code = version.package_version_code
-
-            if version is None:
-                raise Exception(
-                    f"Version not provided and could not be determined for {app_title or search_result.app_title}")
+            if not search_result and version is None:
+                search_result = self.get_latest_version(app_title)
+            if not search_result and version is not None:
+                available_versions = self.get_versions(app_title)
+                #  will raise IndexError if no versions found
+                search_result = [ver for ver in available_versions if ver.package_version == version][0]
 
             # Construct the download URL
             base_url = "https://d.apkpure.com/b/XAPK/"
-            download_url = f"{base_url}{package_name}?versionCode={version_code}"
+            download_url = f"{base_url}{search_result.package_name}?versionCode={search_result.package_version_code}"
 
-            print(f"Downloading version {version} from {download_url}")
+            print(f"Downloading version {search_result.package_version} from {download_url}")
 
             # Call the downloader method to handle the file download
-            return self.downloader(download_url)
-
+            return self.downloader(download_url, f'{search_result.package_name}_{search_result.package_version}.xapk')
+        except IndexError:
+            raise Exception(f"No versions found for '{app_title}'")
         except Exception as e:
             raise Exception(f"Failed to download APK for '{app_title or search_result.app_title}': {str(e)}")
 
-    # TODO Fix this downloader method
-    def downloader(self, url: str) -> str:
+    def downloader(self, url: str, filename) -> str:
         try:
             response = self.get_response(url=url, stream=True, allow_redirects=True)
 
-            # Get the filename from the content-disposition header
-            d = response.headers.get("content-disposition")
-            print('Filename from content-disposition:', d)
-            if d:
-                fname = re.findall("filename=(.+)", d)[0].strip('"')
-            else:
-                fname = url.split("/")[-1]  # Fallback to the URL if filename not provided
-
             # Create the download path
-            fname = os.path.join(os.getcwd(), f"apks/{fname}")
+            fname = os.path.join(os.getcwd(), f"apks/{filename}")
             os.makedirs(os.path.dirname(fname), exist_ok=True)
 
             # If the file already exists, skip download
